@@ -3,64 +3,92 @@
  * Adi Azulay 2017
  */
 
+#include <Servo.h>
 
 #define ENCODER_PIN_A 0
 #define ENCODER_PIN_B 2
 #define POT_PIN A0
 #define NUM_READINGS 10
 #define SERVO_PIN 9
+#define SERVO_2_PIN 6
 
-  
+const static int checkFrequency 250
+
+Servo rotationServo;
+Servo lengthServo;
+
 static uint8_t encPrevPos = 0;
 static uint8_t encPos = 0;
 
+//Encoder Variables
 int readings[NUM_READINGS];
 int readIndex = 0;
 int average = 0;
 int lastAverage;
 
+//Potentiometer Variables
 int potPos;
 int lastPotRead;
-int total = 0;
+int potTotal = 0;
 
-//int n = LOW;
+long timer;
+long lastTimer = 0;
+
+long readNumber = 0;
+
+int x[60];
 
 void setup() {
-  
+
   pinMode (ENCODER_PIN_A, INPUT);
   pinMode (ENCODER_PIN_B, INPUT);
   digitalWrite (ENCODER_PIN_A, HIGH);
   digitalWrite (ENCODER_PIN_B, HIGH);
 
-  pinMode (SERVO_PIN, OUTPUT);
-  
+  rotationServo.attach (SERVO_PIN);
+  lengthServo.attach (SERVO_2_PIN);
+
   Serial.begin (9600);
 
 }
 
 void loop() {
-  readEncoder (ENCODER_PIN_A, ENCODER_PIN_B);
+  timer = millis()-lastTimer;
 
-  int potRead = readPot(POT_PIN);
-  if (lastPotRead != potRead);{
-    analogWrite (SERVO_PIN, (readPot (POT_PIN)));
+  if (timer > checkFrequency){
+    x[readNumber] = readEncocer(ENCODER_PIN_A, ENCODER_PIN_B);
+    readNumber++;
   }
-  lastPotRead = potRead;
+
+  lengthServo.write (readEncoder (ENCODER_PIN_A, ENCODER_PIN_B));
+
+  potPos = readPot (POT_PIN);
+  if (lastPotRead != potPos){
+   rotationServo.write (potPos);
+  }
+  lastPotRead = potPos;
+/*
+  Serial.print(lastPotRead);
+  Serial.print("\t");
+  Serial.println(potPos);
+  */
   /*
     for (int i = 0; i < 100; i++){
       potPos = analogRead (POT_PIN);
-      totalPos = totalPos + potPos ;
+      potTotalPos = potTotalPos + potPos ;
     }
-    potPos = totalPos/100;
-    totalPos = 0;
+    potPos = potTotalPos/100;
+    potTotalPos = 0;
   if (lastPot != potPos){
      //Serial.println(potPos);
   }
      lastPot = potPos;
      */
+     if (readNumber >= 59){
+       readNumber = 0;
+     }
 }
-
-void readEncoder (int x, int y){
+int readEncoder (int x, int y){
   int n = digitalRead(x);
   if ((encPrevPos == LOW) && (n == HIGH)){
     if(digitalRead(y) == LOW){
@@ -71,24 +99,24 @@ void readEncoder (int x, int y){
     Serial.println(encPos);
   }
   encPrevPos = n;
+  return encPos;
 }
 
 int readPot (int x){
-  total = total - readings[readIndex];
+  potTotal = potTotal - readings[readIndex];
   readings[readIndex] = analogRead (x);
-  total = total + readings[readIndex];
+  potTotal = potTotal + readings[readIndex];
   readIndex = readIndex + 1;
 
   if (readIndex >= NUM_READINGS){
     readIndex = 0;
   }
 
-  average = total / NUM_READINGS;
+  average = potTotal / NUM_READINGS;
   average = map (average, 0, 1023, 0, 180);
   if (lastAverage != average){
-    Serial.println(average);
+    // Serial.println(average);
   }
   lastAverage = average;
   return average;
 }
-
