@@ -20,8 +20,8 @@
 
 //Radio Variables
 #define NETWORKID     100  // The same on all nodes that talk to each other
-#define NODEID        2    // The unique identifier of this node
-#define RECEIVER      1    // The recipient of packets
+#define NODEID        1    // The unique identifier of this node
+#define RECEIVER      2    // The recipient of packets
 #define FREQUENCY     RF69_915MHZ
 #define ENCRYPTKEY    "sampleEncryptKey" //exactly the same 16 characters/bytes on all nodes!
 #define IS_RFM69HCW   true // set to 'true' if you are using an RFM69HCW module
@@ -37,9 +37,12 @@ RFM69 radio = RFM69(RFM69_CS, RFM69_IRQ, IS_RFM69HCW, RFM69_IRQN);
 
 bool wired = false;
 
-static const int numLEDS = 48;
+static const int numLEDS = 12;
 
 char allButtonValues[20];
+
+int incomingByte;
+char* dataPack;
 
 CRGB leds[numLEDS];
 
@@ -73,18 +76,25 @@ void setup() {
   pinMode (BUTTON_A_PIN, INPUT);
   LEDS.addLeds<LPD8806, DATA_PIN, CLOCK_PIN, RGB>(leds, numLEDS);
   LEDS.setBrightness (84);
+    for (int i = 0; i < 12; i++) {
+    leds[i] = CRGB(255, 255, 255);
+    FastLED.show();
+  }
+  delay (1000);
   FastLED.clear(true);
   FastLED.show();
+
+  
   allButtonValues[0] = '%';
   Serial.println("Setup Complete");
 }
 
 void loop() {
 
-  bool buttonA = checkState (BUTTON_A_PIN);
-  bool buttonB = checkState (BUTTON_B_PIN);
-  bool buttonC = checkState (BUTTON_C_PIN);
-  bool buttonD = checkState (BUTTON_D_PIN);
+  bool buttonA = checkState (BUTTON_A_PIN, 8);
+  bool buttonB = checkState (BUTTON_B_PIN, 7);
+  bool buttonC = checkState (BUTTON_C_PIN, 3);
+  bool buttonD = checkState (BUTTON_D_PIN, 4);
 
 #ifdef DEBUG
   Serial.println (buttonA);
@@ -96,63 +106,30 @@ void loop() {
   if (buttonA >= true) {
     //Serial.print ('A');
     allButtonValues[1] = 'A';
-    for (int i = 0; i < 3; i++) {
-      leds[i] = CRGB(255, 255, 255);
-      FastLED.show();
-    }
   } else if (buttonA == false) {
     //Serial.print ('a');
     allButtonValues[1] = 'a';
-    for (int i = 0; i < 3; i++) {
-      leds[i] = CRGB(0, 0, 0);
-      FastLED.show();
-    }
   }
   if (buttonB >= true) {
     //Serial.print('B');
     allButtonValues[2] = 'B';
-    for (int i = 3; i < 6; i++) {
-      leds[i] = CRGB(255, 255, 255);
-      FastLED.show();
-    }
   } else if (buttonB == false) {
     //Serial.print('b');
     allButtonValues[2] = 'b';
-    for (int i = 3; i < 6; i++) {
-      leds[i] = CRGB(0, 0, 0);
-      FastLED.show();
-    }
   }
   if (buttonC >= true) {
     allButtonValues[3] = 'C';
-    for (int i = 6; i < 9; i++) {
-      leds[i] = CRGB(255, 255, 255);
-      FastLED.show();
-    }
   } else if (buttonC == false) {
     allButtonValues[3] = 'c';
-    for (int i = 6; i < 9; i++) {
-      leds[i] = CRGB(0, 0, 0);
-      FastLED.show();
-    }
   }
   if (buttonD >= true) {
     allButtonValues[4] = 'D';
-    for (int i = 9; i < 12; i++) {
-      leds[i] = CRGB(255, 255, 255);
-      FastLED.show();
-    }
   } else if (buttonD == false) {
     allButtonValues[4] = 'd';
-    for (int i = 9; i < 12; i++) {
-      leds[i] = CRGB(0, 0, 0);
-      FastLED.show();
-    }
   }
 
   Serial.println (allButtonValues);
   itoa(packetnum++, allButtonValues+13, 10);
-  
   //Serial.print("Sending "); Serial.println(allButtonValues);
   if (radio.sendWithRetry(RECEIVER, allButtonValues, strlen(allButtonValues))) { //target node Id, message as string or byte array, message length
     Serial.println("OK");
@@ -160,14 +137,84 @@ void loop() {
 
   radio.receiveDone(); //put radio in RX mode
   Serial.flush(); //make sure all serial data is clocked out before sleeping the MCU
-  delay(200);
+  delay(50);
+  
+  /*
+   * Recive Data
+   */
+   if (radio.receiveDone())
+  {
+    //print message received to serial
+    //Serial.print('[');Serial.print(radio.SENDERID);Serial.print("] ");
+    //Serial.print((char*)radio.DATA);
+    //Serial.print("   [RX_RSSI:");Serial.print(radio.RSSI);Serial.print("]");
+    dataPack = radio.DATA;
+    Serial.print (dataPack[0]);
+    //check if received message contains Hello World
+    if (strstr((char *)radio.DATA, "%"))
+    {
+      //check if sender wanted an ACK
+      if (radio.ACKRequested())
+      {
+        radio.sendACK();
+        Serial.println(" - ACK sent");
+      }
+    }  
+  }
+
+  radio.receiveDone(); //put radio in RX mode
+  
+  /*******************************
+   * End Radio Code
+   *******************************/
+   
+    checkIncomingByte (1,'A', 'a', 8, 12);
+    checkIncomingByte (2,'B', 'b', 6, 8);
+    checkIncomingByte (3,'C', 'c', 0, 4);
+    checkIncomingByte (4,'D', 'd', 4, 6);
+  Serial.flush();
+  delay(50);
+  
 }
 
-bool checkState(int button) {
+bool checkState(int button, int led) {
   int buttonState = digitalRead (button);
   if (buttonState >= 1) {
+    leds[led] = CRGB(255,255,255);
+    FastLED.show();
     return true;
   } else {
+    leds[led] = CRGB(0,0,0);
     return false;
+  }
+}
+
+void checkIncomingByte (char p, char X, char x, int ledStart, int ledEnd) {
+  incomingByte = dataPack[p];
+  if (incomingByte == X) {
+    for (int i = ledStart; i < ledEnd; i++) {
+      leds[i] = CRGB(255, 255, 255);
+      FastLED.show();
+    }
+  } else if (incomingByte == x) {
+    for (int i = ledStart; i < ledEnd; i++) {
+      leds[i] = CRGB(0, 0, 0);
+      FastLED.show();
+    }
+  }
+}
+
+void checkSerialByte (char X, char x, int ledStart, int ledEnd){
+    incomingByte = Serial.read();
+  if (incomingByte == X) {
+    for (int i = ledStart; i < ledEnd; i++) {
+      leds[i] = CRGB(255, 255, 255);
+      FastLED.show();
+    }
+  } else if (incomingByte == x) {
+    for (int i = ledStart; i < ledEnd; i++) {
+      leds[i] = CRGB(0, 0, 0);
+      FastLED.show();
+    }
   }
 }

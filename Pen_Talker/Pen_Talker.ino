@@ -6,24 +6,24 @@
 #include <Servo.h>
 
 //Uncomment this code to activate debugging mode
-#define DEBUG
+//#define DEBUG
 
 //Pins for all componenets
 #define ENCODER_PIN_A 0
 #define ENCODER_PIN_B 2
 #define POT_PIN A0
 #define NUM_READINGS 10
-#define SERVO_PIN 9
-#define SERVO_2_PIN 6
+#define SERVO_PIN 6
+#define SERVO_2_PIN 9
 
 //Check frequency for buildling coordinets
-const static int checkFrequency = 250;
+const static int checkFrequency = 100;
 
 Servo rotationServo;
 Servo lengthServo;
 
 static uint8_t encPrevPos = 0;
-volatile unsigned uint8_t encPos = 0;
+static uint8_t encPos = 0;
 
 //Encoder Variables
 int readings[NUM_READINGS];
@@ -52,7 +52,7 @@ void setup() {
   digitalWrite (ENCODER_PIN_B, HIGH);
 
   //Encoder interrupt
-  attachInterrupt(0, doEncoder, CHANGE)
+  //attachInterrupt(0, readEncoder, CHANGE);
 
   rotationServo.attach (SERVO_PIN);
   lengthServo.attach (SERVO_2_PIN);
@@ -75,13 +75,15 @@ void loop() {
       Serial.print("y =");
       Serial.println(y[readNumber]);
     #endif
+    lengthServo.write(x[readNumber]);
+    rotationServo.write(y[readNumber]);
     readNumber++;
-    timer = lastTimer;
+    lastTimer = timer;
   }
 
 
-
-  lengthServo.write (readEncoder (ENCODER_PIN_A, ENCODER_PIN_B));
+readEncoder (ENCODER_PIN_A, ENCODER_PIN_B);
+  //lengthServo.write (readEncoder (ENCODER_PIN_A, ENCODER_PIN_B));
 
   potPos = readPot (POT_PIN);
   if (lastPotRead != potPos){
@@ -116,9 +118,9 @@ int readEncoder (int x, int y){
   int n = digitalRead(x);
   if ((encPrevPos == LOW) && (n == HIGH)){
     if(digitalRead(y) == LOW){
-      encPos --;
+      encPos = encPos - 4;
     } else {
-      encPos ++;
+      encPos = encPos + 4;
     }
     //Serial.println(encPos);
   }
