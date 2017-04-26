@@ -17,7 +17,7 @@
 
 //LED Variables
 #define PIN 5
-#define NUM_LEDS 11
+#define NUM_LEDS 12
 #define BRIGHTNESS 50
 
 //IMU Variables
@@ -32,7 +32,7 @@
 
 //Button Pins
 #define SEND_PIN 6
-#define CIRCLE_PIN 10
+#define CIRCLE_PIN 7
 
 // Singleton instance of the radio driver
 RH_RF69 rf69(RFM69_CS, RFM69_INT);
@@ -68,13 +68,19 @@ int hue;
 bool runX;
 bool runY;
 
+//Communication Variables
+int incomingHue;
+int incomingLEDOn;
+int outgoingHue;
+char outgoingLEDOn[10];
+
 /**************************************************************************/
 /*
     Displays some basic information on this sensor from the unified
     sensor API sensor_t type (see Adafruit_Sensor for more information)
 */
 /**************************************************************************/
-
+/*
 #ifdef DEBUG
 void displaySensorDetails(void)
 {
@@ -114,7 +120,7 @@ void displaySensorStatus(void)
 }
 
     //Display sensor calibration status
-    
+
 void displayCalStatus(void)
 {
   // Get the four calibration values (0..3)
@@ -142,7 +148,7 @@ void displayCalStatus(void)
   Serial.print(mag, DEC);
 }
 #endif
-
+*/
 
 void setup() {
 #ifdef DEBUG
@@ -159,10 +165,10 @@ void setup() {
 
   delay(1000);
   /* Display some basic information on this sensor */
-  displaySensorDetails();
-
-  /* Optional: Display current status */
-  displaySensorStatus();
+//  displaySensorDetails();
+//
+//  /* Optional: Display current status */
+//  displaySensorStatus();
 
   bno.setExtCrystalUse(true);
 
@@ -204,22 +210,21 @@ void setup() {
 //  uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 //                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 //  rf69.setEncryptionKey(key);
-//  
+//
 //  pinMode(LED, OUTPUT);
 
 #ifdef DEBUG
   Serial.print("RFM69 radio @");  Serial.print((int)RF69_FREQ);  Serial.println(" MHz");
 #endif
- 
+
   strip.setBrightness(BRIGHTNESS);
   strip.begin();
   strip.show();
 
   for (int i = 0; i < NUM_LEDS; i++) {
-    // Set the i'th led to red
     strip.setPixelColor(i,strip.Color(0,0,0,255));
-    // Show the leds
     strip.show();
+    delay (20)
   }
   delay (200);
     for (int i = 0; i < strip.numPixels(); i++) {
@@ -227,54 +232,39 @@ void setup() {
     // Show the leds
     strip.show();
   }
-
-  pinMode (CIRCLE_PIN, INPUT);
-  #ifdef DEBUG
-    delay(3000);
-  #endif
 }
 
 void loop() {
-  //  for(int i = 0; i < 13; i++) {
-  //    // Set the i'th led to red
-  //    leds [i] = CHSV(0, 0, 0);
-  //    // Show the leds
-  //    FastLED.show();
-  //  }
 
-  
-  // read the sensor:
-  sensors_event_t event;
-  bno.getEvent(&event);
- Serial.println ("top");
+  if (SEND_PIN == HIGH){
+    // read the sensor:
+    sensors_event_t event;
+    bno.getEvent(&event);
 
-  long x = event.orientation.y;
-  long y = event.orientation.z;
+    long x = event.orientation.y;
+    long y = event.orientation.z;
 
+    float angle = atan2( y, x );                 // angle in radians -180 to 180
 
+    /*
+      float magnitude = sqrt( x*x + y*y);    // Pythagoras
 
-  float angle = atan2( y, x );                 // in radians, zero is joystick move to right
+      if( magnitude > 512) magnitude = 512;
 
-  /*
-    float magnitude = sqrt( x*x + y*y);    // Pythagoras
+      x = magnitude * cos( angle );
+      y = magnitude * sin( angle );
+      angle = atan2( y, x );
+    */
 
-    if( magnitude > 512) magnitude = 512;
+    angle = angle * 57296 / 1000; //convert angle from radians to degrees
 
-    x = magnitude * cos( angle );
-    y = magnitude * sin( angle );
-    angle = atan2( y, x );
-  */
-
-  angle = angle * 57296 / 1000;
-
-#ifdef DEBUG
-  Serial.print (angle);
-  Serial.print ("\t");
-  Serial.print (x);
-  Serial.print ("\t");
-  Serial.println(y);
-#endif
-
+  #ifdef DEBUG
+    Serial.print (angle);
+    Serial.print ("\t");
+    Serial.print (x);
+    Serial.print ("\t");
+    Serial.println(y);
+  #endif
   if ( x <= 5 && x >= -5) {
     runX = false;
   } else {
@@ -285,21 +275,48 @@ void loop() {
   } else {
     runY = true;
   }
+
   if (runX == true || runY == true) {
-    int readPin = digitalRead (CIRCLE_PIN);
-    Serial.println (readPin);
-    if (digitalRead(CIRCLE_PIN) == 1) {
-      angle = map(angle, -179, 180, 0, 10);
-      //Serial.println(angle);
+    if (digitalRead(7) == HIGH) {
+      angle = map(angle, -179, 180, 1, 11);
+      Serial.println(angle);
+      int outgoingLEDonInt = int(angle);
+      iota (outgoingLEDonInt, outgoingLEDOn, 10) ;
+
+      itoa(packetnum++, outgoingLEDOn+13, 10);
+      Serial.print("Sending "); Serial.println(outgoingLEDOn);
+      // Send a message!
+      rf69.send((uint8_t *)radiopacket, strlen(outgoingLEDOn));
+      rf69.waitPacketSent();
+
+    } else {
+        if (angle < 0){
+          angle = map(angle, -179, 0, 255, 0);
+          outgoingHue = int(angle);
+        } else if (angle >= 0){
+          angle = map(angle, 0, 180, 0, 255);
+          outgoingHue = int(angle);
+      }
+    }
+  }
+
+
+
+
+} else if (rf69.available){
+  if (runX == true || runY == true) {
+    if (digitalRead(7) == HIGH) {
+      angle = map(angle, -179, 180, 1, 11);
+      Serial.println(angle);
       int ledOn = int(angle);
       for (int i = 0; i < NUM_LEDS; i++) {
         strip.setPixelColor(i,strip.Color(0,0,0,0));
       }
-      strip.setPixelColor(ledOn, strip.Color(0,0,0,ledGamma[200]));
+      strip.setPixelColor(ledOn, strip.Color(0,0,0,ledGamma[hue]));
       strip.show();
 
     }
-    else { 
+    else {
       if (angle < 0){
         angle = map(angle, -179, 0, 255, 0);
         hue = int(angle);
@@ -319,12 +336,13 @@ void loop() {
 
     }
   }
-
-  delay(100);        // delay in between reads for stability
 }
+  //  else {
+  //    for (int i = 13; i < NUM_LEDS; i++) {
+  //      leds [i] = CHSV(0, 0, 0);
+  //      FastLED.show();
+  //    }
+  //  }
 
-
-
-
-
-
+  delay(1);        // delay in between reads for stability
+}
